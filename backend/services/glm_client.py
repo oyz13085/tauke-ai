@@ -1,27 +1,56 @@
+"""
+GLM client — wraps ILMU-GLM-5.1 via the Anthropic SDK.
+
+The hackathon provides ILMU-GLM-5.1 (Z.ai × YTL AI Lab) which exposes an
+Anthropic-compatible Messages API at https://api.ilmu.ai/anthropic.
+We point the Anthropic SDK at that base URL so we get type-safe requests
+and automatic retries for free.
+
+API key: https://console.ilmu.ai/dashboard → API Keys
+"""
 import base64
-import httpx
+import json
 from pathlib import Path
+
+import anthropic
+
 from backend.config import settings
 
-_HEADERS = {"Authorization": f"Bearer {settings.glm_api_key}", "Content-Type": "application/json"}
-_TIMEOUT = 30.0
+
+def _client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(
+        api_key=settings.glm_api_key,
+        base_url=settings.glm_base_url,
+    )
 
 
 async def glm_ocr(image_path: str) -> dict:
-    """Send an image to GLM-4V for receipt OCR. Returns raw JSON dict from the model."""
-    image_data = base64.b64encode(Path(image_path).read_bytes()).decode()
+    """
+    Send an image to ILMU-GLM-5.1 for receipt OCR.
+    Returns the raw Anthropic response as a dict (content[0].text holds the JSON).
+    """
+    image_bytes = Path(image_path).read_bytes()
+    image_b64 = base64.standard_b64encode(image_bytes).decode()
     ext = Path(image_path).suffix.lstrip(".").lower()
-    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+    media_type = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
 
-    payload = {
-        "model": "glm-4v",
-        "messages": [
+    client = _client()
+    response = client.messages.create(
+        model=settings.glm_model,
+        max_tokens=2048,
+        system=_OCR_SYSTEM_PROMPT,
+        temperature=0.1,
+        messages=[
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{image_data}"},
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": image_b64,
+                        },
                     },
                     {
                         "type": "text",
@@ -30,43 +59,30 @@ async def glm_ocr(image_path: str) -> dict:
                 ],
             }
         ],
-        "system": _OCR_SYSTEM_PROMPT,
-        "temperature": 0.1,  # low temp for deterministic extraction
-    }
-
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.post(
-            f"{settings.glm_base_url}/chat/completions",
-            headers=_HEADERS,
-            json=payload,
-        )
-        resp.raise_for_status()
-        return resp.json()
+    )
+    # Return in a normalised shape so ocr_service.py can parse it identically
+    return {"choices": [{"message": {"content": response.content[0].text}}]}
 
 
 async def glm_explain(reasoning_trace: dict, product_context: dict) -> dict:
-    """Send a reasoning trace to GLM-4 for Manglish explanation. Returns parsed JSON dict."""
-    import json
-
+    """
+    Ask ILMU-GLM-5.1 to write a Manglish explanation of a pre-computed recommendation.
+    Returns normalised dict with choices[0].message.content.
+    """
     user_content = json.dumps(
-        {"reasoning_trace": reasoning_trace, "product": product_context}, ensure_ascii=False
+        {"reasoning_trace": reasoning_trace, "product": product_context},
+        ensure_ascii=False,
     )
 
-    payload = {
-        "model": "glm-4",
-        "messages": [{"role": "user", "content": user_content}],
-        "system": _EXPLAIN_SYSTEM_PROMPT,
-        "temperature": 0.5,
-    }
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            f"{settings.glm_base_url}/chat/completions",
-            headers=_HEADERS,
-            json=payload,
-        )
-        resp.raise_for_status()
-        return resp.json()
+    client = _client()
+    response = client.messages.create(
+        model=settings.glm_model,
+        max_tokens=512,
+        system=_EXPLAIN_SYSTEM_PROMPT,
+        temperature=0.5,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    return {"choices": [{"message": {"content": response.content[0].text}}]}
 
 
 _OCR_SYSTEM_PROMPT = """\
