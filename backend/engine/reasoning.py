@@ -304,16 +304,31 @@ def run_for_shop(
     db: Session,
     shop_id: uuid.UUID,
     context: Optional[ExternalContext] = None,
+    with_narration: bool = True,
 ) -> list[ReasoningResult]:
     """Run the engine for every product in the shop; persist actionable recs."""
     ctx = context or ExternalContext()
     products: list[Product] = db.query(Product).filter_by(shop_id=shop_id).all()
     results: list[ReasoningResult] = []
 
+    narrator = None
+    if with_narration:
+        try:
+            from backend.services.narration_service import narrate_result
+            narrator = narrate_result
+        except Exception:
+            pass
+
     for product in products:
         result = run(db, shop_id, product.id, ctx)
         if result and result.should_recommend:
-            _persist_recommendation(db, result)
+            explanation: Optional[str] = None
+            if narrator:
+                try:
+                    explanation = narrator(result, product.name)
+                except Exception:
+                    pass
+            _persist_recommendation(db, result, glm_explanation=explanation)
             results.append(result)
 
     if results:
@@ -410,7 +425,11 @@ def _build_signals(context: ExternalContext) -> list[str]:
     return signals
 
 
-def _persist_recommendation(db: Session, result: ReasoningResult) -> None:
+def _persist_recommendation(
+    db: Session,
+    result: ReasoningResult,
+    glm_explanation: Optional[str] = None,
+) -> None:
     from datetime import datetime, timezone
     from datetime import timedelta as td
     rec = AIRecommendation(
@@ -429,6 +448,7 @@ def _persist_recommendation(db: Session, result: ReasoningResult) -> None:
         expected_gain=result.expected_gain_myr,
         reasoning_trace=result.reasoning_trace,
         external_factors={"signals": result.context_signals_active},
+        glm_explanation=glm_explanation,
         expires_at=datetime.now(timezone.utc) + td(days=2),
     )
     db.add(rec)

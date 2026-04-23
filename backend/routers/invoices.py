@@ -119,13 +119,19 @@ def _process_invoice(invoice_id: uuid.UUID, image_path: str) -> None:
 
 
 def _trigger_reasoning(shop_id: uuid.UUID) -> None:
-    """Run the reasoning engine for every product in the shop."""
+    """Run the reasoning engine with live external context for every product."""
     from backend.database import SessionLocal
-    from backend.engine.reasoning import ExternalContext, run_for_shop
+    from backend.engine.context_fetcher import build_context
+    from backend.engine.reasoning import run_for_shop
+    from backend.models.shop import Shop
 
     db = SessionLocal()
     try:
-        run_for_shop(db, shop_id, ExternalContext())
+        shop = db.query(Shop).filter_by(id=shop_id).first()
+        lat = float(shop.location_lat or 3.1390) if shop else 3.1390
+        lng = float(shop.location_lng or 101.6869) if shop else 101.6869
+        context = build_context(db, shop_id, location_lat=lat, location_lng=lng)
+        run_for_shop(db, shop_id, context)
     except Exception:
         pass   # reasoning failures must never break the invoice pipeline
     finally:
