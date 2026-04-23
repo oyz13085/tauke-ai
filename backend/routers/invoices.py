@@ -119,5 +119,14 @@ def _process_invoice(invoice_id: uuid.UUID, image_path: str) -> None:
 
 
 def _trigger_reasoning(shop_id: uuid.UUID) -> None:
-    """Stub — replaced by full ReasoningEngine in Step 4."""
-    pass
+    """Run the reasoning engine for every product in the shop."""
+    from backend.database import SessionLocal
+    from backend.engine.reasoning import ExternalContext, run_for_shop
+
+    db = SessionLocal()
+    try:
+        run_for_shop(db, shop_id, ExternalContext())
+    except Exception:
+        pass   # reasoning failures must never break the invoice pipeline
+    finally:
+        db.close()
