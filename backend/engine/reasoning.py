@@ -432,6 +432,11 @@ def _persist_recommendation(
 ) -> None:
     from datetime import datetime, timezone
     from datetime import timedelta as td
+    from backend.models.shop import Shop
+
+    shop: Optional[Shop] = db.query(Shop).filter_by(id=result.shop_id).first()
+    expo_token = shop.expo_push_token if shop else None
+
     rec = AIRecommendation(
         shop_id=result.shop_id,
         product_id=result.product_id,
@@ -452,6 +457,24 @@ def _persist_recommendation(
         expires_at=datetime.now(timezone.utc) + td(days=2),
     )
     db.add(rec)
+
+    # Push notification for high-confidence recs
+    try:
+        from backend.services.notification import send_recommendation_push
+        import json as _json
+        headline = (
+            _json.loads(glm_explanation).get("headline", _action_text(result))
+            if glm_explanation
+            else _action_text(result)
+        )
+        send_recommendation_push(
+            expo_push_token=expo_token,
+            headline=headline,
+            confidence=result.confidence_final,
+            recommendation_type=result.decision.lower(),
+        )
+    except Exception:
+        pass
 
 
 def _action_text(result: ReasoningResult) -> str:
