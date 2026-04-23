@@ -1,0 +1,38 @@
+[
+  {
+    "start": "2026-01-05",
+    "end":   "2026-01-16",
+    "name":  "UM Semester 1 Exam Week",
+    "event_key": "um_exam_week"
+  },
+  {
+    "start": "2026-02-02",
+    "end":   "2026-02-06",
+    "name":  "UM Orientation Week (Semester 2)",
+    "event_key": "um_orientation_week"
+  },
+  {
+    "start": "2026-05-04",
+    "end":   "2026-05-15",
+    "name":  "UM Semester 2 Exam Week",
+    "event_key": "um_exam_week"
+  },
+  {
+    "start": "2026-07-13",
+    "end":   "2026-07-17",
+    "name":  "UM Orientation Week (Special Semester)",
+    "event_key": "um_orientation_week"
+  },
+  {
+    "start": "2026-08-24",
+    "end":   "2026-09-04",
+    "name":  "UM Special Semester Exam Week",
+    "event_key": "um_exam_week"
+  },
+  {
+    "start": "2026-09-14",
+    "end":   "2026-09-18",
+    "name":  "UM Orientation Week (Semester 1 2026/27)",
+    "event_key": "um_orientation_week"
+  }
+]
